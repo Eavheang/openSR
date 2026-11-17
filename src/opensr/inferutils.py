@@ -3,8 +3,8 @@
 10 m -> 2.5 m is the SEN2-SR model (x4); 2.5 m -> 1 m is bicubic resampling plus
 sharpening. The 1 m grid is finer, but detail below ~2.5 m is not recovered.
 
-    from opensr import inferutils
-    results = inferutils.run([(105.392986, 14.121299)], ["2026-10-29", "2026-11-08"])
+    import opensr.inferutils
+    results = opensr.inferutils.run([(105.392986, 14.121299)], ["2026-10-29", "2026-11-08"])
 """
 from __future__ import annotations
 

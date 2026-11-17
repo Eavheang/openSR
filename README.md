@@ -19,20 +19,20 @@ pip install -e .
 ## Use
 
 ```python
-from opensr import inferutils
+import opensr.inferutils
 
 # one location, one date
-inferutils.run((105.392986, 14.121299), "2026-11-08")
+opensr.inferutils.run((105.392986, 14.121299), "2026-11-08")
 
 # many locations x many dates (every combination is processed)
-results = inferutils.run(
+results = opensr.inferutils.run(
     [(105.392986, 14.121299), (104.9160, 11.5564)],
     ["2026-10-14", "2026-10-29", "2026-11-08"],
     out_dir="/content/s2dr3_out",
 )
 
 # CSV text or a CSV file path also work (lon first, lat second, header optional)
-inferutils.run("points.csv", ["2026-11-08"])
+opensr.inferutils.run("points.csv", ["2026-11-08"])
 ```
 
 `run` returns one `Result` per (location, date) with `path` (GeoTIFF),
