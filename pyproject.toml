@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opensr"
+version = "0.1.0"
+description = "Sentinel-2 10 m to 1 m RGB super-resolution for points and dates"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "pillow",
+    "torch",
+    "rasterio",
+    "shapely",
+    "planetary-computer",
+    "pystac-client",
+    "mlstac",
+    "sen2sr",
+    "opensr-srgan>=1.1.0",
+]
