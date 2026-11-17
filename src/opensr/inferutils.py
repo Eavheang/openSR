@@ -14,7 +14,7 @@ import re
 import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from itertools import product
 
@@ -61,7 +61,7 @@ class Result:
     lat: float
     date: str                           # requested date (the scene may be up to SEARCH_DAYS away)
     path: str | None = None             # 1 m RGB GeoTIFF; None if the job failed
-    preview: Image.Image | None = None  # centre 1 km, 10 m input | 1 m output
+    preview: Image.Image | None = field(default=None, repr=False)  # centre 1 km, 10 m input | 1 m output
     error: str | None = None
 
 
@@ -310,4 +310,20 @@ def run(lonlat, date, out_dir="opensr_out"):
             z.write(os.path.join(run_dir, name), name)
     ok = sum(r.error is None for r in jobs)
     print(f"\rDone: {ok} ok, {len(jobs) - ok} failed. Saved: {run_dir}/  +  {zip_path}")
+    _show_previews(jobs)
     return jobs
+
+
+def _show_previews(jobs):
+    """Draw each preview inline when running in a Jupyter/Colab kernel; no-op elsewhere."""
+    try:
+        from IPython import get_ipython
+        from IPython.display import display
+    except ImportError:
+        return
+    if getattr(get_ipython(), "kernel", None) is None:  # plain script or terminal IPython
+        return
+    for r in jobs:
+        if r.preview:
+            print(f"#{r.index} ({r.lon}, {r.lat}) {r.date}  {os.path.basename(r.path)}")
+            display(r.preview)

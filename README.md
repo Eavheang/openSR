@@ -37,14 +37,9 @@ opensr.inferutils.run("points.csv", ["2026-11-08"])
 
 `run` returns one `Result` per (location, date) with `path` (GeoTIFF),
 `preview` (PIL image: 10 m input | 1 m output, centre 1 km) and `error`
-(set when that job failed). In a notebook:
-
-```python
-from IPython.display import display
-for r in results:
-    if r.preview:
-        display(r.preview)
-```
+(set when that job failed). In Jupyter or Colab, `run` also draws every
+preview inline under the progress output; in a plain script it only returns
+the results.
 
 The model weights download once to `~/.cache/opensr/` on the first call.
 A GPU is used when available; CPU works but is slow.
