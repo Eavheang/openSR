@@ -11,7 +11,7 @@ a run folder and a zip of it are written per call.
 ## Install
 
 ```bash
-pip install git+https://github.com/Eavheang/openSR.git
+pip install opensr-sr1m
 # or, from a local checkout
 pip install -e .
 ```
