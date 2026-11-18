@@ -21,19 +21,28 @@ pip install -e .
 ```python
 import opensr.inferutils
 
-# one location, one date
-opensr.inferutils.run((105.392986, 14.121299), "2026-11-08")
+# one location, one date -> output_2026-11-08_Phnom_Penh.tif
+opensr.inferutils.run((104.9160, 11.5564), "2026-11-08", location="Phnom Penh")
 
-# many locations x many dates (every combination is processed)
+# many locations x many dates (every combination is processed),
+# one name per point -> output_2026-10-14_Site_A.tif, ...
 results = opensr.inferutils.run(
     [(105.392986, 14.121299), (104.9160, 11.5564)],
     ["2026-10-14", "2026-10-29", "2026-11-08"],
+    location=["Site A", "Phnom Penh"],
     out_dir="/content/s2dr3_out",
 )
 
 # CSV text or a CSV file path also work (lon first, lat second, header optional)
 opensr.inferutils.run("points.csv", ["2026-11-08"])
 ```
+
+File names are `output_<date>_<location>.tif`, using the requested date.
+When the same name repeats for one date, later files get `(1)`, `(2)`, ...
+(`output_2026-11-08_Phnom_Penh(1).tif`). Without `location` the files are
+`output_<date>_run_1.tif`, `output_<date>_run_2.tif`, ...
+The scene actually used can be a few days from the requested date; its ID
+(which includes its acquisition time) is stored in each GeoTIFF's `source` tag.
 
 `run` returns one `Result` per (location, date) with `path` (GeoTIFF),
 `preview` (PIL image: 10 m input | 1 m output, centre 1 km) and `error`

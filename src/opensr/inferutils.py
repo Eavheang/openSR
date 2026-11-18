@@ -56,7 +56,7 @@ DEV = "cuda" if torch.cuda.is_available() else "cpu"
 
 @dataclass
 class Result:
-    index: int                          # 1-based location index, also in the file name
+    index: int                          # 1-based location index
     lon: float
     lat: float
     date: str                           # requested date (the scene may be up to SEARCH_DAYS away)
@@ -99,6 +99,36 @@ def _dates(date):
     for d in dates:
         datetime.strptime(d, "%Y-%m-%d")  # fail before any download, not inside a worker
     return dates
+
+
+def _locations(location, n):
+    """None | name | list of n names (None allowed) -> n file-safe names or None."""
+    names = location if isinstance(location, (list, tuple)) else [location] * n
+    if len(names) != n:
+        raise ValueError(f"got {len(names)} location names for {n} points")
+    # Keep any script (e.g. Khmer); only drop whitespace and characters paths can't hold.
+    return [re.sub(r'[\s<>:"/\\|?*\x00-\x1f]+', "_", str(s)).strip("_.") or None if s else None
+            for s in names]
+
+
+def _file_stems(jobs, names):
+    """output_<date>_<name>, then (1), (2)... on repeats; output_<date>_run_<n> if unnamed.
+
+    Takes the first free candidate, compared case-insensitively (macOS/Windows), so a
+    user name like "run_1" or "Site(1)" can never overwrite another job's file.
+    """
+    used, stems = set(), []
+    for r in jobs:
+        name = names[r.index - 1]
+        base = f"output_{r.date}_{name or 'run'}"
+        suffix, k = ("({})", 0) if name else ("_{}", 1)
+        stem = base + suffix.format(k) if k else base
+        while stem.lower() in used:
+            k += 1
+            stem = base + suffix.format(k)
+        used.add(stem.lower())
+        stems.append(stem)
+    return stems
 
 
 # ---------------- Model ----------------
@@ -237,7 +267,7 @@ def _center(chw, half):
     return chw[:, cy - half:cy + half, cx - half:cx + half]
 
 
-def _run_job(idx, lon, lat, scenes, run_dir):
+def _run_job(lon, lat, scenes, path):
     for item in _find_scenes(lon, lat, scenes):
         crs, left, top = _patch_geo(item, lon, lat)
         if (_read_window(item, "SCL", left, top, Resampling.nearest) == 0).mean() < 0.2:
@@ -249,12 +279,7 @@ def _run_job(idx, lon, lat, scenes, run_dir):
         lr = np.stack(list(pool.map(lambda b: _read_band(item, b, left, top), BANDS)))
     tci = _gpu_products(lr)
 
-    # S2C_MSIL2A_20261110T031941_T48PWA_001_RGB_1m.tif  (001 = location index)
-    sat, lvl, t = item.properties["s2:product_uri"].split("_")[:3]
-    path = f"{run_dir}/{sat}_{lvl}_{t}_T{item.properties['s2:mgrs_tile']}_{idx:03d}_RGB_{OUT_RES:g}m.tif"
-    # Two requested dates can resolve to the same scene (same file name): write to a
-    # private temp file and rename, so concurrent jobs never interleave writes.
-    tmp = f"{path}.{threading.get_ident()}.tmp"
+    tmp = f"{path}.tmp"  # write then rename: no half-written .tif (paths are unique per job)
     with rasterio.open(tmp, "w", driver="GTiff", width=tci.shape[2],
                        height=tci.shape[1], count=3, dtype="uint8", crs=crs,
                        transform=from_origin(left, top, OUT_RES, OUT_RES), photometric="ycbcr",
@@ -272,19 +297,24 @@ def _run_job(idx, lon, lat, scenes, run_dir):
 
 
 # ---------------- Public API ----------------
-def run(lonlat, date, out_dir="opensr_out"):
+def run(lonlat, date, out_dir="opensr_out", location=None):
     """Super-resolve every (location, date) pair to a 1 m RGB GeoTIFF.
 
-    lonlat:  (lon, lat), a list of (lon, lat), or CSV text / a CSV file path
-             with lon in the first column and lat in the second (header optional).
-    date:    "YYYY-MM-DD" or a list of them. With no pass on that exact day,
-             the nearest scene within +/- SEARCH_DAYS days is used.
-    out_dir: each call writes to a new {out_dir}/run_<timestamp>/ plus a .zip of it.
+    lonlat:   (lon, lat), a list of (lon, lat), or CSV text / a CSV file path
+              with lon in the first column and lat in the second (header optional).
+    date:     "YYYY-MM-DD" or a list of them. With no pass on that exact day,
+              the nearest scene within +/- SEARCH_DAYS days is used.
+    out_dir:  each call writes to a new {out_dir}/run_<timestamp>/ plus a .zip of it.
+    location: name used in the file names: one name for every point, or a list
+              with one name per point. Files are output_<date>_<name>.tif, with
+              (1), (2)... added when a name repeats for the same date. Without a
+              name: output_<date>_run_1.tif, output_<date>_run_2.tif, ...
 
     Returns one Result per (location, date), sorted by location then date.
     Failed jobs are returned too, with `error` set and `path` None.
     """
     points, dates = _points(lonlat), _dates(date)
+    names = _locations(location, len(points))
     _load_model()
     run_dir = os.path.join(out_dir, f"run_{datetime.now():%Y%m%d_%H%M%S}")
     os.makedirs(run_dir, exist_ok=True)
@@ -293,8 +323,9 @@ def run(lonlat, date, out_dir="opensr_out"):
         scenes = dict(zip(dates, ex.map(lambda d: _search_date(d, points), dates)))
 
     jobs = [Result(i, lon, lat, d) for (i, (lon, lat)), d in product(enumerate(points, 1), dates)]
+    paths = [os.path.join(run_dir, f"{s}.tif") for s in _file_stems(jobs, names)]
     with ThreadPoolExecutor(min(len(jobs), 16)) as ex:
-        futs = {ex.submit(_run_job, r.index, r.lon, r.lat, scenes[r.date], run_dir): r for r in jobs}
+        futs = {ex.submit(_run_job, r.lon, r.lat, scenes[r.date], p): r for r, p in zip(jobs, paths)}
         for n, f in enumerate(as_completed(futs), 1):
             r = futs[f]
             try:
